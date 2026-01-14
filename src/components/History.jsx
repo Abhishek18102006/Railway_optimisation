@@ -1,24 +1,24 @@
-// src/components/History.jsx
+export default function History({ trains }) {
+  const clearedTrains = trains.filter(t => t.cleared);
 
-export default function History({ history }) {
   return (
     <div className="table-card">
-      <h3>📜 Cleared Train History</h3>
+      <h3>Train History</h3>
 
-      {history.length === 0 ? (
-        <p>No trains cleared yet</p>
+      {clearedTrains.length === 0 ? (
+        <p>No cleared trains yet</p>
       ) : (
-        history.map((t, i) => (
+        clearedTrains.map(t => (
           <div
-            key={i}
+            key={t.train_id}
             style={{
-              background: "#f8fafc",
+              background: "#f3f4f6",
               padding: 10,
               borderRadius: 6,
               marginBottom: 6
             }}
           >
-            <b>{t.train_id}</b> — {t.train_name}
+            🚆 {t.train_id} — {t.train_name}
           </div>
         ))
       )}
