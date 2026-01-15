@@ -2,6 +2,8 @@ import { useState } from "react";
 import TrainPrecedencePanel from "./TrainPrecedencePanel";
 import TrainDetails from "./TrainDetails";
 import Conflicts from "../components/Conflicts";
+import { TrainDataValidator } from "../utils/trainDataValidator.jsx";
+import { ConflictDebugPanel } from "../utils/ConflictDebugPanel";
 
 /* ============================
    DASHBOARD
@@ -18,7 +20,7 @@ export default function Dashboard({ trains, setTrains }) {
         t.train_id === trainId
           ? {
               ...t,
-              delay,
+              delay: Number(delay) || 0,
               status: "IN_CONFLICT",
               conflict_reason: "Departure delay"
             }
@@ -81,6 +83,9 @@ export default function Dashboard({ trains, setTrains }) {
 
   return (
     <>
+      {/* ================= DATA VALIDATOR ================= */}
+      <TrainDataValidator trains={trains} />
+
       {/* ================= KPIs ================= */}
       <div className="card-grid">
         <StatusCard title="Active Trains" value={activeTrains.length} />
@@ -121,6 +126,9 @@ export default function Dashboard({ trains, setTrains }) {
         onAcceptResolution={handleAcceptResolution}
         onRejectResolution={handleRejectResolution}
       />
+
+      {/* ================= DEBUG PANEL ================= */}
+      <ConflictDebugPanel trains={activeTrains} />
     </>
   );
 }

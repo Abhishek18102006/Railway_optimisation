@@ -9,6 +9,29 @@ function App() {
   const [trains, setTrains] = useState([]);
   const [page, setPage] = useState("dashboard");
 
+  /* ============================
+     AI RESOLUTION HANDLERS
+     ============================ */
+  function handleAcceptResolution(trainId) {
+    setTrains(prev =>
+      prev.map(t =>
+        t.train_id === trainId
+          ? { ...t, delay: 0, status: "ON TIME" }
+          : t
+      )
+    );
+  }
+
+  function handleRejectResolution(trainId) {
+    setTrains(prev =>
+      prev.map(t =>
+        t.train_id === trainId
+          ? { ...t, status: "DELAYED" }
+          : t
+      )
+    );
+  }
+
   if (!user) return <Login onLogin={setUser} />;
 
   return (
@@ -16,7 +39,14 @@ function App() {
       {page === "dashboard" && (
         <Dashboard trains={trains} setTrains={setTrains} />
       )}
-      {page === "conflicts" && <Conflicts trains={trains} />}
+
+      {page === "conflicts" && (
+        <Conflicts
+          trains={trains}
+          onAcceptResolution={handleAcceptResolution}
+          onRejectResolution={handleRejectResolution}
+        />
+      )}
     </Layout>
   );
 }

@@ -1,39 +1,88 @@
 import pandas as pd
-from sklearn.tree import DecisionTreeClassifier
+import os
 import joblib
-import random
 
-# Load schedule
-df = pd.read_csv("daily_schedule.csv")
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
 
-# Create synthetic training data
-X = []
-y = []
+# ==============================
+# PATHS
+# ==============================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "ml_training_data.csv")
+MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
-trains = df[["train_id", "priority"]].values
+# ==============================
+# LOAD DATA
+# ==============================
+df = pd.read_csv(CSV_PATH)
 
-for _ in range(2000):
-    t1, t2 = random.sample(list(trains), 2)
+# ==============================
+# FEATURE ENGINEERING
+# ==============================
+df["load_ratio"] = df["passengers"] / df["train_capacity"]
+df["avg_speed"] = df["distance_km"] / df["travel_time_hr"]
 
-    cp1 = random.randint(1, 5)
-    cp2 = random.randint(1, 5)
-
-    X.append([t1[1], t2[1], cp1, cp2])
-
-    # Decision logic (GROUND TRUTH)
-    if t1[1] > t2[1]:
-        y.append(0)
-    elif t2[1] > t1[1]:
-        y.append(1)
+def distance_type(d):
+    if d < 150:
+        return 0
+    elif d < 400:
+        return 1
     else:
-        # Same priority → checkpoint decides
-        y.append(0 if cp1 > cp2 else 1)
+        return 2
 
-# Train model
-model = DecisionTreeClassifier(max_depth=5)
-model.fit(X, y)
+df["distance_type"] = df["distance_km"].apply(distance_type)
 
-# Save model
-joblib.dump(model, "model.pkl")
+# ==============================
+# FEATURES & TARGET
+# ==============================
+X = df[
+    [
+        "passengers",
+        "distance_km",
+        "travel_time_hr",
+        "load_ratio",
+        "avg_speed",
+        "distance_type",
+        "is_peak_hour"
+    ]
+]
 
-print("✅ Model trained and saved as model.pkl")
+y = df["delay_risk"]
+
+# ==============================
+# TRAIN / TEST SPLIT
+# ==============================
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42
+)
+
+# ==============================
+# MODEL
+# ==============================
+model = RandomForestClassifier(
+    n_estimators=120,
+    max_depth=10,
+    random_state=42,
+    n_jobs=-1
+)
+
+model.fit(X_train, y_train)
+
+# ==============================
+# EVALUATION
+# ==============================
+y_pred = model.predict(X_test)
+
+print("\nModel Accuracy:", accuracy_score(y_test, y_pred))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+
+# ==============================
+# SAVE MODEL
+# ==============================
+joblib.dump(model, MODEL_PATH)
+print(f"\n✅ Model trained and saved as {MODEL_PATH}")

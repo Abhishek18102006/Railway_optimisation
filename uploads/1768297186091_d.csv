@@ -1,0 +1,11 @@
+train_id,train_name,passengers,distance_km,travel_time_hr,train_capacity,is_peak_hour
+201,Chennai Express,880,350,5.6,1000,1
+202,Coimbatore Intercity,420,495,7.1,900,0
+203,Madurai Superfast,950,460,6.7,1000,1
+204,Trichy Passenger,300,140,3.1,800,0
+205,Kovai Express,870,365,5.9,1000,1
+206,Pandian Express,720,480,7.6,1000,0
+207,Nilgiri Express,910,495,7.0,1000,1
+208,Salem Fast Passenger,280,64,1.4,700,0
+209,Kanyakumari Express,980,705,11.2,1000,1
+210,Vellore MEMU,260,140,2.9,600,0

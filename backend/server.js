@@ -16,7 +16,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /* ===============================
-   LOGIN API
+   HEALTH CHECK
+   =============================== */
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "OK", db: "connected" });
+  } catch (err) {
+    console.error("DB ERROR:", err);
+    res.status(500).json({ status: "DB ERROR" });
+  }
+});
+
+/* ===============================
+   LOGIN (UNCHANGED)
    =============================== */
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
@@ -33,57 +46,77 @@ app.post("/login", async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error(err);
+    console.error("LOGIN ERROR:", err);
     res.status(500).json({ message: "Database error" });
   }
 });
 
 /* ===============================
    AI CONFLICT RESOLUTION API
-   (STDIN → PYTHON)
    =============================== */
-app.post("/resolve-conflict", (req, res) => {
-  const pythonScript = path.join(
-    __dirname,
-    "../ai_model/predict_train.py"
-  );
+app.post("/ai-suggest", (req, res) => {
+  const payload = req.body;
 
-  const python = spawn("python", [pythonScript]);
+  // 🔴 HARD VALIDATION (prevents silent failure)
+  const required = [
+    "priority_train",
+    "affected_train",
+    "passengers",
+    "distance_km",
+    "travel_time_hr",
+    "train_capacity",
+    "is_peak_hour",
+    "delay"
+  ];
 
-  let output = "";
-  let error = "";
-
-  // Send JSON safely via stdin
-  python.stdin.write(JSON.stringify(req.body));
-  python.stdin.end();
-
-  python.stdout.on("data", data => {
-    output += data.toString();
-  });
-
-  python.stderr.on("data", data => {
-    error += data.toString();
-  });
-
-  python.on("close", () => {
-    if (error) {
-      console.error("PYTHON ERROR:", error);
-      return res.status(500).json({ error });
-    }
-
-    if (!output) {
-      return res.status(500).json({
-        error: "No output received from AI model"
+  for (const key of required) {
+    if (payload[key] === undefined) {
+      return res.status(400).json({
+        error: `Missing required field: ${key}`
       });
     }
+  }
 
-    try {
-      res.json(JSON.parse(output));
-    } catch (e) {
-      console.error("JSON PARSE ERROR:", output);
-      res.status(500).json({ error: "Invalid AI response" });
-    }
-  });
+  try {
+    const pythonScript = path.join(
+      __dirname,
+      "../ai_model/predict_train.py"
+    );
+
+    const python = spawn("python", [pythonScript]);
+
+    let output = "";
+    let error = "";
+
+    python.stdin.write(JSON.stringify(payload));
+    python.stdin.end();
+
+    python.stdout.on("data", data => {
+      output += data.toString();
+    });
+
+    python.stderr.on("data", data => {
+      error += data.toString();
+    });
+
+    python.on("close", () => {
+      if (error) {
+        console.error("PYTHON STDERR:", error);
+        return res.status(500).json({ error: "AI execution failed" });
+      }
+
+      try {
+        res.json(JSON.parse(output));
+      } catch (e) {
+        console.error("INVALID AI OUTPUT:", output);
+        res.status(500).json({ error: "Invalid AI response format" });
+      }
+    });
+
+  } catch (err) {
+    console.error("AI ROUTE ERROR:", err);
+    res.status(500).json({ error: "AI server error" });
+  }
 });
 
 /* ===============================
