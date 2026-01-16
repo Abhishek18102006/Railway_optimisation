@@ -1,3 +1,4 @@
+// src/components/Dashboard.jsx (UPDATED)
 import { useState } from "react";
 import TrainPrecedencePanel from "./TrainPrecedencePanel";
 import TrainDetails from "./TrainDetails";
@@ -6,9 +7,9 @@ import { TrainDataValidator } from "../utils/trainDataValidator.jsx";
 import { ConflictDebugPanel } from "../utils/ConflictDebugPanel";
 
 /* ============================
-   DASHBOARD
+   DASHBOARD (UPDATED)
    ============================ */
-export default function Dashboard({ trains, setTrains }) {
+export default function Dashboard({ trains, setTrains, onClearTrain }) {
   const [selectedTrain, setSelectedTrain] = useState(null);
 
   /* ============================
@@ -127,21 +128,6 @@ export default function Dashboard({ trains, setTrains }) {
   }
 
   /* ============================
-     ⭐ CLEAR TRAIN (SECTION EXIT)
-     ============================ */
-  function handleClearTrain(trainId) {
-    console.log(`🚂 Clearing train ${trainId} from section`);
-    
-    setTrains(prev =>
-      prev.filter(t => t.train_id !== trainId)
-    );
-
-    if (selectedTrain?.train_id === trainId) {
-      setSelectedTrain(null);
-    }
-  }
-
-  /* ============================
      DERIVED DATA
      ============================ */
   const activeTrains = trains.filter(t => t.status !== "CLEARED");
@@ -183,7 +169,7 @@ export default function Dashboard({ trains, setTrains }) {
         <TrainDetails
           train={selectedTrain}
           onDelayInject={injectDelay}
-          onClear={handleClearTrain}
+          onClear={onClearTrain} // ⭐ Pass the clear handler
         />
       </div>
 

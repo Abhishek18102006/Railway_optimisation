@@ -1,3 +1,4 @@
+// src/components/Conflicts.jsx (FIXED - PROPER UPDATE ON ACCEPT)
 import { useState, useEffect } from "react";
 import { detectBlockConflicts, getSeverityColor } from "../utils/blockConflictDetector";
 import { detectLoopLineConflicts } from "../utils/loopLineDetector";
@@ -7,7 +8,8 @@ import { resolveConflictAI } from "../utils/aiResolver";
 export default function Conflicts({
   trains,
   onAcceptResolution,
-  onRejectResolution
+  onRejectResolution,
+  onUpdateConflictCounts
 }) {
   const [aiResult, setAiResult] = useState(null);
   const [activeConflict, setActiveConflict] = useState(null);
@@ -23,12 +25,19 @@ export default function Conflicts({
       if (Array.isArray(trains) && trains.length > 0) {
         const blockConflicts = detectBlockConflicts(trains);
         const loopConflicts = detectLoopLineConflicts(trains);
-        const junctionConflicts = detectJunctionConflicts(trains);
+        const junctionConflictsData = detectJunctionConflicts(trains);
         
         setSameBlockConflicts(blockConflicts);
         setLoopLineConflicts(loopConflicts);
-        setJunctionConflicts(junctionConflicts);
+        setJunctionConflicts(junctionConflictsData);
         setError(null);
+
+        // Update performance tracking
+        if (onUpdateConflictCounts) {
+          onUpdateConflictCounts('block', blockConflicts.length);
+          onUpdateConflictCounts('loop', loopConflicts.length);
+          onUpdateConflictCounts('junction', junctionConflictsData.length);
+        }
       } else {
         setSameBlockConflicts([]);
         setLoopLineConflicts([]);
@@ -41,7 +50,7 @@ export default function Conflicts({
       setLoopLineConflicts([]);
       setJunctionConflicts([]);
     }
-  }, [trains]);
+  }, [trains, onUpdateConflictCounts]);
 
   /* ============================
      AI RESOLUTION
@@ -49,15 +58,27 @@ export default function Conflicts({
   async function handleResolve(conflict) {
     setLoading(true);
     setError(null);
-    setAiResult(null); // Clear previous result
+    setAiResult(null);
     
     try {
       console.log("🤖 Resolving conflict with AI:", conflict);
       
       // Find train objects from trains array
-      const trainA = trains.find(t => t.train_id === conflict.trainA || t.train_id === conflict.leadingTrain);
-      const trainB = trains.find(t => t.train_id === conflict.trainB || t.train_id === conflict.followingTrain);
+      const trainA = trains.find(t => 
+        t.train_id === conflict.trainA || 
+        t.train_id === conflict.leadingTrain || 
+        t.train_id === conflict.train1
+      );
+      const trainB = trains.find(t => 
+        t.train_id === conflict.trainB || 
+        t.train_id === conflict.followingTrain || 
+        t.train_id === conflict.train2
+      );
       
+      if (!trainA || !trainB) {
+        throw new Error("Could not find train objects for conflict resolution");
+      }
+
       // Enrich conflict with train objects
       const enrichedConflict = {
         ...conflict,
@@ -84,17 +105,64 @@ export default function Conflicts({
     }
   }
 
+  /* ============================
+     ⭐ ACCEPT - WITH FULL DETAILS
+     ============================ */
   function handleAccept() {
-    if (!aiResult) return;
+    if (!aiResult) {
+      console.error("No AI result to accept");
+      return;
+    }
 
-    onAcceptResolution(aiResult.reduced_train);
+    console.log("✅ Accepting AI resolution:", aiResult);
+
+    // Calculate delay reduction based on speed change
+    let delayReduction = 0;
+    if (aiResult.suggested_speed > 0 && aiResult.suggested_speed < 80) {
+      // Estimate delay reduction: slower speed = more delay saved
+      delayReduction = Math.floor((80 - aiResult.suggested_speed) / 10);
+    } else if (aiResult.suggested_speed === 0) {
+      // Train held completely
+      delayReduction = 0;
+    }
+
+    // ⭐ Pass complete resolution details
+    const resolutionDetails = {
+      priority_train: aiResult.priority_train,
+      reduced_train: aiResult.reduced_train,
+      decision: aiResult.decision,
+      confidence: aiResult.confidence,
+      suggested_speed: aiResult.suggested_speed,
+      delayReduction: delayReduction,
+      reason: aiResult.reason
+    };
+
+    console.log("📤 Sending resolution details:", resolutionDetails);
+
+    // Call parent handler with full details
+    onAcceptResolution(aiResult.reduced_train, resolutionDetails);
+
+    // Update conflict type resolution count
+    if (onUpdateConflictCounts && activeConflict) {
+      const conflictType = activeConflict.type === 'SAME_BLOCK' ? 'block' :
+                          activeConflict.type === 'LOOP_LINE' ? 'loop' : 'junction';
+      onUpdateConflictCounts(conflictType, 0, 1);
+    }
+
+    // Clear AI result
     setAiResult(null);
     setActiveConflict(null);
+    
+    console.log("✅ Resolution accepted and state cleared");
   }
 
+  /* ============================
+     REJECT
+     ============================ */
   function handleReject() {
     if (!aiResult) return;
 
+    console.log("❌ Rejecting AI resolution for:", aiResult.reduced_train);
     onRejectResolution(aiResult.reduced_train);
     setAiResult(null);
     setActiveConflict(null);
@@ -131,7 +199,7 @@ export default function Conflicts({
         </div>
       )}
 
-      {/* ================= AI RESULT ================= */}
+      {/* ================= AI RESULT (ENHANCED) ================= */}
       {aiResult && aiResult.success && (
         <div 
           style={{
@@ -191,7 +259,10 @@ export default function Conflicts({
               </span>
 
               <strong>Suggested Speed:</strong>
-              <span>{aiResult.suggested_speed} km/h</span>
+              <span style={{ fontWeight: "600" }}>
+                {aiResult.suggested_speed} km/h
+                {aiResult.suggested_speed === 0 && " (HOLD)"}
+              </span>
 
               <strong>Reason:</strong>
               <span>{aiResult.reason}</span>
@@ -234,6 +305,7 @@ export default function Conflicts({
             </div>
           </div>
 
+          {/* ⭐ ACTION BUTTONS */}
           <div style={{ display: "flex", gap: "10px" }}>
             <button
               onClick={handleAccept}
@@ -248,7 +320,7 @@ export default function Conflicts({
                 fontWeight: "600"
               }}
             >
-              ✅ Accept Resolution
+              ✅ Accept & Apply Resolution
             </button>
 
             <button
@@ -266,6 +338,18 @@ export default function Conflicts({
             >
               ❌ Reject
             </button>
+          </div>
+
+          {/* ⭐ INFO MESSAGE */}
+          <div style={{
+            marginTop: "12px",
+            padding: "8px",
+            background: "#fffbeb",
+            borderRadius: "4px",
+            fontSize: "12px",
+            color: "#92400e"
+          }}>
+            ℹ️ Accepting will update Train {aiResult.reduced_train}'s speed to {aiResult.suggested_speed} km/h in the train precedence list
           </div>
         </div>
       )}
@@ -416,10 +500,29 @@ export default function Conflicts({
                 padding: "10px",
                 borderRadius: "6px",
                 fontSize: "13px",
-                color: "#1e40af"
+                color: "#1e40af",
+                marginBottom: "10px"
               }}>
                 👉 <strong>Recommendation:</strong> Route Train {conflict.followingTrain} to LOOP LINE
               </div>
+
+              <button 
+                onClick={() => handleResolve(conflict)}
+                disabled={loading}
+                style={{
+                  background: loading ? "#9ca3af" : "#6366f1",
+                  color: "white",
+                  border: "none",
+                  padding: "8px 16px",
+                  borderRadius: "6px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  opacity: loading ? 0.5 : 1
+                }}
+              >
+                {loading ? "🔄 Processing..." : "🤖 Resolve with AI"}
+              </button>
             </div>
           ))
         )}

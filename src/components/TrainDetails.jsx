@@ -1,3 +1,4 @@
+// src/components/TrainDetails.jsx (FIXED - WITH CLEAR BUTTON)
 import { useState } from "react";
 
 export default function TrainDetails({ train, onDelayInject, onClear }) {
@@ -30,6 +31,24 @@ export default function TrainDetails({ train, onDelayInject, onClear }) {
     }
   }
 
+  // ⭐ CLEAR TRAIN HANDLER
+  function handleClearTrain() {
+    if (!onClear) {
+      console.error("❌ onClear handler not provided");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear train ${train.train_id} (${train.train_name}) from junction?\n\n` +
+      `This will move the train to history.`
+    );
+
+    if (confirmed) {
+      console.log(`🚂 User confirmed clearing train ${train.train_id}`);
+      onClear(train.train_id);
+    }
+  }
+
   return (
     <div className="train-details">
       <h3>{train.train_name}</h3>
@@ -46,7 +65,9 @@ export default function TrainDetails({ train, onDelayInject, onClear }) {
         <p>
           <b>Status:</b>{" "}
           <span style={{ 
-            color: train.status === "ON TIME" ? "#16a34a" : "#dc2626",
+            color: train.status === "ON TIME" ? "#16a34a" : 
+                  train.status === "RESOLVED" ? "#0284c7" :
+                  "#dc2626",
             fontWeight: "600"
           }}>
             {train.status}
@@ -61,8 +82,17 @@ export default function TrainDetails({ train, onDelayInject, onClear }) {
             {train.delay > 0 ? `+${train.delay}` : train.delay || 0} min
           </span>
         </p>
+        {train.conflict_reason && (
+          <p>
+            <b>Note:</b>{" "}
+            <span style={{ fontSize: "13px", color: "#64748b" }}>
+              {train.conflict_reason}
+            </span>
+          </p>
+        )}
       </div>
 
+      {/* ================= DELAY INJECTION ================= */}
       <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
         <h4 style={{ marginBottom: "12px", fontSize: "15px" }}>Inject Delay</h4>
         
@@ -174,30 +204,41 @@ export default function TrainDetails({ train, onDelayInject, onClear }) {
         </div>
       </div>
 
-      {onClear && (
-        <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
-          <button
-            onClick={() => {
-              if (window.confirm(`Clear train ${train.train_id} from section?`)) {
-                onClear(train.train_id);
-              }
-            }}
-            style={{
-              width: "100%",
-              padding: "10px",
-              background: "#dc2626",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontSize: "14px",
-              fontWeight: "600"
-            }}
-          >
-            🚂 Clear Train from Section
-          </button>
+      {/* ================= CLEAR TRAIN BUTTON (FIXED) ================= */}
+      <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #e5e7eb" }}>
+        <button
+          onClick={handleClearTrain}
+          style={{
+            width: "100%",
+            padding: "12px",
+            background: "#16a34a",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer",
+            fontSize: "14px",
+            fontWeight: "600",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px"
+          }}
+          onMouseEnter={(e) => e.target.style.background = "#15803d"}
+          onMouseLeave={(e) => e.target.style.background = "#16a34a"}
+        >
+          <span style={{ fontSize: "18px" }}>✅</span>
+          <span>Clear Train (Passed Junction)</span>
+        </button>
+        
+        <div style={{ 
+          fontSize: "12px", 
+          color: "#64748b", 
+          marginTop: "8px",
+          textAlign: "center" 
+        }}>
+          Train will be moved to history
         </div>
-      )}
+      </div>
     </div>
   );
 }
