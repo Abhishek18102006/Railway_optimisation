@@ -1,3 +1,4 @@
+// src/components/TrainPrecedencePanel.jsx (UPDATED)
 import CSVUpload from "./CSVUpload";
 import TrainCard from "./TrainCard";
 

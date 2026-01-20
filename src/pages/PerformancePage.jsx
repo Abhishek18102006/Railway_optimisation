@@ -1,4 +1,4 @@
-// src/pages/PerformancePage.jsx
+// src/pages/PerformancePage.jsx (FIXED - Real-time Updates)
 import { useState, useEffect } from "react";
 
 export default function PerformancePage({ performanceData, history, trains }) {
@@ -12,6 +12,12 @@ export default function PerformancePage({ performanceData, history, trains }) {
     totalTrainsCleared = 0,
     aiAccuracyRate = 85,
     totalDelayReduced = 0,
+    blockConflictsDetected = 0,
+    blockConflictsResolved = 0,
+    loopConflictsDetected = 0,
+    loopConflictsResolved = 0,
+    junctionConflictsDetected = 0,
+    junctionConflictsResolved = 0,
     resolutionHistory = []
   } = performanceData;
 
@@ -20,16 +26,21 @@ export default function PerformancePage({ performanceData, history, trains }) {
     ? ((totalConflictsResolved / totalConflictsDetected) * 100).toFixed(1)
     : 0;
 
-  const activeConflicts = trains.filter(t => t.conflict || t.status === "IN_CONFLICT").length;
+  const activeConflicts = trains.filter(t => 
+    t.conflict || 
+    t.status === "IN_CONFLICT" || 
+    t.status === "DELAYED"
+  ).length;
   
   const averageDelayReduction = totalConflictsResolved > 0
     ? (totalDelayReduced / totalConflictsResolved).toFixed(1)
     : 0;
 
-  const systemEfficiency = Math.min(
-    100,
-    (totalConflictsResolved / Math.max(1, totalConflictsDetected)) * 100
-  ).toFixed(1);
+  const systemEfficiency = totalConflictsDetected > 0
+    ? Math.min(100, (totalConflictsResolved / totalConflictsDetected) * 100).toFixed(1)
+    : 0;
+
+  const systemStatus = activeConflicts > 0 ? "MANAGING" : "OPTIMAL";
 
   return (
     <div style={{ padding: "20px" }}>
@@ -147,7 +158,7 @@ export default function PerformancePage({ performanceData, history, trains }) {
           />
           <MetricRow 
             label="System Status" 
-            value={activeConflicts > 0 ? "MANAGING" : "OPTIMAL"}
+            value={systemStatus}
             valueColor={activeConflicts > 0 ? "#d97706" : "#16a34a"}
           />
         </MetricPanel>
@@ -162,20 +173,20 @@ export default function PerformancePage({ performanceData, history, trains }) {
       }}>
         <BreakdownCard
           title="Block Conflicts"
-          resolved={performanceData.blockConflictsResolved || 0}
-          total={performanceData.blockConflictsDetected || 0}
+          resolved={blockConflictsResolved}
+          total={blockConflictsDetected}
           color="#dc2626"
         />
         <BreakdownCard
           title="Loop Line Conflicts"
-          resolved={performanceData.loopConflictsResolved || 0}
-          total={performanceData.loopConflictsDetected || 0}
+          resolved={loopConflictsResolved}
+          total={loopConflictsDetected}
           color="#d97706"
         />
         <BreakdownCard
           title="Junction Conflicts"
-          resolved={performanceData.junctionConflictsResolved || 0}
-          total={performanceData.junctionConflictsDetected || 0}
+          resolved={junctionConflictsResolved}
+          total={junctionConflictsDetected}
           color="#0284c7"
         />
       </div>
@@ -217,16 +228,21 @@ export default function PerformancePage({ performanceData, history, trains }) {
         </h3>
         
         <div style={{ display: "grid", gap: "12px" }}>
-          <InsightCard
-            type={resolutionRate > 80 ? "success" : "warning"}
-            message={
-              resolutionRate > 80
-                ? `Excellent performance! ${resolutionRate}% of conflicts successfully resolved.`
-                : `Resolution rate at ${resolutionRate}%. Consider reviewing conflict patterns.`
-            }
-          />
+          {resolutionRate > 80 && (
+            <InsightCard
+              type="success"
+              message={`Excellent performance! ${resolutionRate}% of conflicts successfully resolved.`}
+            />
+          )}
           
-          {averageResolutionTime < 3 && (
+          {resolutionRate > 0 && resolutionRate <= 80 && (
+            <InsightCard
+              type="warning"
+              message={`Resolution rate at ${resolutionRate}%. Consider reviewing conflict patterns.`}
+            />
+          )}
+          
+          {averageResolutionTime < 3 && totalConflictsResolved > 0 && (
             <InsightCard
               type="success"
               message={`Fast AI response time: ${averageResolutionTime.toFixed(2)}s average resolution time.`}
@@ -244,6 +260,13 @@ export default function PerformancePage({ performanceData, history, trains }) {
             <InsightCard
               type="warning"
               message={`${activeConflicts} active conflicts detected. Consider immediate intervention.`}
+            />
+          )}
+          
+          {totalConflictsResolved === 0 && totalConflictsDetected > 0 && (
+            <InsightCard
+              type="info"
+              message="Conflicts detected but none resolved yet. Use AI recommendations to resolve conflicts."
             />
           )}
         </div>
@@ -367,7 +390,8 @@ function ResolutionItem({ resolution }) {
       background: "#f8fafc",
       borderRadius: "6px",
       marginBottom: "8px",
-      borderLeft: `3px solid ${resolution.decision === "HOLD_TRAIN" ? "#dc2626" : "#d97706"}`
+      borderLeft: `3px solid ${resolution.decision === "HOLD_TRAIN" ? "#dc2626" : 
+                                resolution.decision === "ROUTE_TO_LOOP" ? "#d97706" : "#3b82f6"}`
     }}>
       <div style={{
         display: "flex",
@@ -384,6 +408,11 @@ function ResolutionItem({ resolution }) {
       </div>
       <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
         Decision: <strong style={{ color: "#0f172a" }}>{resolution.decision}</strong>
+        {resolution.conflictType && (
+          <span style={{ marginLeft: "8px", fontSize: "11px", color: "#6b7280" }}>
+            ({resolution.conflictType})
+          </span>
+        )}
       </div>
       <div style={{ fontSize: "11px", color: "#64748b" }}>
         Confidence: {resolution.confidence}% | Time: {resolution.resolutionTime}s

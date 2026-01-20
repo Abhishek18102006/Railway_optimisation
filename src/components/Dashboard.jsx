@@ -1,21 +1,39 @@
-// src/components/Dashboard.jsx (UPDATED)
-import { useState } from "react";
+// src/components/Dashboard.jsx (FIXED - Updates Performance Correctly)
+import { useState, useEffect } from "react";
 import TrainPrecedencePanel from "./TrainPrecedencePanel";
 import TrainDetails from "./TrainDetails";
 import Conflicts from "../components/Conflicts";
 import { TrainDataValidator } from "../utils/trainDataValidator.jsx";
 import { ConflictDebugPanel } from "../utils/ConflictDebugPanel";
+import { detectBlockConflicts } from "../utils/blockConflictDetector";
+import { detectLoopLineConflicts } from "../utils/loopLineDetector";
+import { detectJunctionConflicts } from "../utils/junctionConflictDetector";
 
-/* ============================
-   DASHBOARD (UPDATED)
-   ============================ */
-export default function Dashboard({ trains, setTrains, onClearTrain }) {
+export default function Dashboard({ 
+  trains, 
+  setTrains, 
+  onClearTrain, 
+  performanceData,
+  onAcceptResolution,
+  onRejectResolution
+}) {
   const [selectedTrain, setSelectedTrain] = useState(null);
+  const [liveConflictCount, setLiveConflictCount] = useState(0);
 
-  /* ============================
-     ⭐ CORRECTED DELAY INJECTION
-     Preserves original schedule, applies delay
-     ============================ */
+  // Calculate live conflict count
+  useEffect(() => {
+    if (trains && trains.length > 0) {
+      const blockConflicts = detectBlockConflicts(trains);
+      const loopConflicts = detectLoopLineConflicts(trains);
+      const junctionConflicts = detectJunctionConflicts(trains);
+      
+      const totalConflicts = blockConflicts.length + loopConflicts.length + junctionConflicts.length;
+      setLiveConflictCount(totalConflicts);
+    } else {
+      setLiveConflictCount(0);
+    }
+  }, [trains]);
+
   function injectDelay(trainId, delayMinutes) {
     const delayAmount = Number(delayMinutes);
     
@@ -30,18 +48,11 @@ export default function Dashboard({ trains, setTrains, onClearTrain }) {
       prev.map(t => {
         if (t.train_id !== trainId) return t;
         
-        // ⭐ IMPORTANT: Use the ORIGINAL scheduled time, not current arrival_time
-        // Store original time on first delay injection
         const originalScheduledTime = t.original_arrival_time || t.arrival_time;
-        
-        // Parse original scheduled time
         const [hours, minutes] = originalScheduledTime.split(":").map(Number);
         const scheduledMinutes = hours * 60 + minutes;
         
-        // Calculate effective arrival = scheduled + delay
         let effectiveMinutes = scheduledMinutes + delayAmount;
-        
-        // Handle day wrap-around
         if (effectiveMinutes < 0) {
           effectiveMinutes = 1440 + effectiveMinutes;
         }
@@ -50,7 +61,6 @@ export default function Dashboard({ trains, setTrains, onClearTrain }) {
         const effectiveHour = Math.floor(effectiveMinutes / 60);
         const effectiveMinute = effectiveMinutes % 60;
         
-        // ⭐ REASSIGN BLOCK BASED ON EFFECTIVE TIME
         let newBlockId;
         if (effectiveHour >= 5 && effectiveHour < 8) {
           newBlockId = "BLK_MORNING";
@@ -62,22 +72,12 @@ export default function Dashboard({ trains, setTrains, onClearTrain }) {
           newBlockId = t.block_id;
         }
         
-        console.log(`🔄 Train ${trainId} delay applied:`, {
-          scheduledTime: originalScheduledTime,
-          delayAmount: delayAmount,
-          effectiveMinutes: effectiveMinutes,
-          effectiveTime: `${String(effectiveHour).padStart(2, '0')}:${String(effectiveMinute).padStart(2, '0')}`,
-          oldBlock: t.block_id,
-          newBlock: newBlockId
-        });
-        
-        // ⭐ RETURN UPDATED TRAIN WITH PRESERVED SCHEDULE
         return {
           ...t,
-          original_arrival_time: originalScheduledTime, // ⭐ Preserve original
-          arrival_time: originalScheduledTime,          // ⭐ Keep showing scheduled time
-          delay: delayAmount,                           // ⭐ Store delay
-          arrival: effectiveMinutes,                    // ⭐ Effective time for conflict detection
+          original_arrival_time: originalScheduledTime,
+          arrival_time: originalScheduledTime,
+          delay: delayAmount,
+          arrival: effectiveMinutes,
           block_id: newBlockId,
           current_block: newBlockId,
           status: delayAmount !== 0 ? "DELAYED" : "ON TIME",
@@ -87,115 +87,136 @@ export default function Dashboard({ trains, setTrains, onClearTrain }) {
     );
   }
 
-  /* ============================
-     ⭐ ACCEPT AI RESOLUTION
-     ============================ */
-  function handleAcceptResolution(trainId) {
-    console.log(`✅ Accepting AI resolution for train ${trainId}`);
-    
-    setTrains(prev =>
-      prev.map(t =>
-        t.train_id === trainId
-          ? {
-              ...t,
-              status: "RESOLVED",
-              conflict: false,
-              conflict_reason: "AI resolution applied"
-            }
-          : t
-      )
-    );
-  }
-
-  /* ============================
-     ⭐ REJECT AI RESOLUTION
-     ============================ */
-  function handleRejectResolution(trainId) {
-    console.log(`❌ Rejecting AI resolution for train ${trainId}`);
-    
-    setTrains(prev =>
-      prev.map(t =>
-        t.train_id === trainId
-          ? {
-              ...t,
-              status: "MANUAL_REVIEW",
-              conflict: true,
-              conflict_reason: "AI resolution rejected - requires manual intervention"
-            }
-          : t
-      )
-    );
-  }
-
-  /* ============================
-     DERIVED DATA
-     ============================ */
   const activeTrains = trains.filter(t => t.status !== "CLEARED");
-  const conflictedTrains = activeTrains.filter(t => t.conflict || t.status === "IN_CONFLICT" || t.status === "DELAYED");
+  const conflictedTrains = activeTrains.filter(t => 
+    t.conflict || 
+    t.status === "IN_CONFLICT" || 
+    t.status === "DELAYED" || 
+    t.status === "MANUAL_REVIEW"
+  );
+  const resolvedTrains = activeTrains.filter(t => t.status === "RESOLVED");
+
+  // Determine system status
+  const systemStatus = liveConflictCount > 0 ? "CONFLICT" : 
+                      conflictedTrains.length > 0 ? "MANAGING" : "NORMAL";
+  
+  const systemStatusColor = liveConflictCount > 0 ? "#dc2626" : 
+                           conflictedTrains.length > 0 ? "#d97706" : "#16a34a";
 
   return (
     <>
-      {/* ================= DATA VALIDATOR ================= */}
+      {/* Data Validator */}
       <TrainDataValidator trains={trains} />
 
-      {/* ================= KPIs ================= */}
+      {/* KPIs */}
       <div className="card-grid">
-        <StatusCard title="Active Trains" value={activeTrains.length} />
+        <StatusCard 
+          title="Active Trains" 
+          value={activeTrains.length}
+          subtitle={`${resolvedTrains.length} resolved`}
+        />
         <StatusCard
-          title="Conflicts"
-          value={conflictedTrains.length}
+          title="Active Conflicts"
+          value={liveConflictCount}
+          color={liveConflictCount > 0 ? "#dc2626" : "#16a34a"}
+          subtitle={`${performanceData.totalConflictsResolved || 0} total resolved`}
         />
         <StatusCard
           title="System Status"
-          value={
-            conflictedTrains.length > 0
-              ? "CONFLICT"
-              : "NORMAL"
-          }
-          color={conflictedTrains.length > 0 ? "#dc2626" : "#16a34a"}
+          value={systemStatus}
+          color={systemStatusColor}
+          subtitle={conflictedTrains.length > 0 ? `${conflictedTrains.length} trains affected` : "All clear"}
         />
       </div>
 
-      {/* ================= MAIN GRID ================= */}
+      {/* Performance Summary Bar */}
+      {performanceData.totalConflictsResolved > 0 && (
+        <div style={{
+          background: "white",
+          padding: "16px",
+          borderRadius: "10px",
+          marginTop: "16px",
+          display: "flex",
+          gap: "24px",
+          alignItems: "center",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)"
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
+              Total Resolved
+            </div>
+            <div style={{ fontSize: "24px", fontWeight: "700", color: "#16a34a" }}>
+              {performanceData.totalConflictsResolved}
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
+              Avg Resolution Time
+            </div>
+            <div style={{ fontSize: "24px", fontWeight: "700", color: "#0284c7" }}>
+              {performanceData.averageResolutionTime.toFixed(2)}s
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
+              Total Delay Saved
+            </div>
+            <div style={{ fontSize: "24px", fontWeight: "700", color: "#7c3aed" }}>
+              {performanceData.totalDelayReduced} min
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
+              Success Rate
+            </div>
+            <div style={{ fontSize: "24px", fontWeight: "700", color: "#16a34a" }}>
+              {performanceData.totalConflictsDetected > 0 
+                ? Math.round((performanceData.totalConflictsResolved / performanceData.totalConflictsDetected) * 100)
+                : 0}%
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Grid */}
       <div className="dashboard-grid">
-        {/* LEFT: TRAIN LIST */}
         <TrainPrecedencePanel
           trains={activeTrains}
           setTrains={setTrains}
           onSelect={setSelectedTrain}
         />
-
-        {/* RIGHT: TRAIN DETAILS */}
         <TrainDetails
           train={selectedTrain}
           onDelayInject={injectDelay}
-          onClear={onClearTrain} // ⭐ Pass the clear handler
+          onClear={onClearTrain}
         />
       </div>
 
-      {/* ================= CONFLICT RESOLUTION ================= */}
+      {/* Conflict Resolution */}
       <Conflicts
         trains={activeTrains}
-        onAcceptResolution={handleAcceptResolution}
-        onRejectResolution={handleRejectResolution}
+        onAcceptResolution={onAcceptResolution}
+        onRejectResolution={onRejectResolution}
       />
 
-      {/* ================= DEBUG PANEL ================= */}
+      {/* Debug Panel */}
       <ConflictDebugPanel trains={activeTrains} />
     </>
   );
 }
 
-/* ============================
-   STATUS CARD
-   ============================ */
-function StatusCard({ title, value, color }) {
+function StatusCard({ title, value, color, subtitle }) {
   return (
     <div className="card">
       <h4>{title}</h4>
       <p className="card-value" style={{ color: color || "#0a2540" }}>
         {value}
       </p>
+      {subtitle && (
+        <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }

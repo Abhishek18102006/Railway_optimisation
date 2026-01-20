@@ -1,4 +1,4 @@
-// src/components/Conflicts.jsx (FIXED - PROPER UPDATE ON ACCEPT)
+// src/components/Conflicts.jsx (UPDATED - Shows Different Resolution Types)
 import { useState, useEffect } from "react";
 import { detectBlockConflicts, getSeverityColor } from "../utils/blockConflictDetector";
 import { detectLoopLineConflicts } from "../utils/loopLineDetector";
@@ -32,7 +32,6 @@ export default function Conflicts({
         setJunctionConflicts(junctionConflictsData);
         setError(null);
 
-        // Update performance tracking
         if (onUpdateConflictCounts) {
           onUpdateConflictCounts('block', blockConflicts.length);
           onUpdateConflictCounts('loop', loopConflicts.length);
@@ -52,9 +51,7 @@ export default function Conflicts({
     }
   }, [trains, onUpdateConflictCounts]);
 
-  /* ============================
-     AI RESOLUTION
-     ============================ */
+  /* AI RESOLUTION */
   async function handleResolve(conflict) {
     setLoading(true);
     setError(null);
@@ -63,7 +60,6 @@ export default function Conflicts({
     try {
       console.log("🤖 Resolving conflict with AI:", conflict);
       
-      // Find train objects from trains array
       const trainA = trains.find(t => 
         t.train_id === conflict.trainA || 
         t.train_id === conflict.leadingTrain || 
@@ -79,7 +75,6 @@ export default function Conflicts({
         throw new Error("Could not find train objects for conflict resolution");
       }
 
-      // Enrich conflict with train objects
       const enrichedConflict = {
         ...conflict,
         trainAObj: trainA,
@@ -105,9 +100,7 @@ export default function Conflicts({
     }
   }
 
-  /* ============================
-     ⭐ ACCEPT - WITH FULL DETAILS
-     ============================ */
+  /* ACCEPT RESOLUTION */
   function handleAccept() {
     if (!aiResult) {
       console.error("No AI result to accept");
@@ -116,17 +109,11 @@ export default function Conflicts({
 
     console.log("✅ Accepting AI resolution:", aiResult);
 
-    // Calculate delay reduction based on speed change
     let delayReduction = 0;
     if (aiResult.suggested_speed > 0 && aiResult.suggested_speed < 80) {
-      // Estimate delay reduction: slower speed = more delay saved
       delayReduction = Math.floor((80 - aiResult.suggested_speed) / 10);
-    } else if (aiResult.suggested_speed === 0) {
-      // Train held completely
-      delayReduction = 0;
     }
 
-    // ⭐ Pass complete resolution details
     const resolutionDetails = {
       priority_train: aiResult.priority_train,
       reduced_train: aiResult.reduced_train,
@@ -134,31 +121,27 @@ export default function Conflicts({
       confidence: aiResult.confidence,
       suggested_speed: aiResult.suggested_speed,
       delayReduction: delayReduction,
-      reason: aiResult.reason
+      reason: aiResult.reason,
+      conflictType: aiResult.conflictType
     };
 
     console.log("📤 Sending resolution details:", resolutionDetails);
 
-    // Call parent handler with full details
     onAcceptResolution(aiResult.reduced_train, resolutionDetails);
 
-    // Update conflict type resolution count
     if (onUpdateConflictCounts && activeConflict) {
       const conflictType = activeConflict.type === 'SAME_BLOCK' ? 'block' :
                           activeConflict.type === 'LOOP_LINE' ? 'loop' : 'junction';
       onUpdateConflictCounts(conflictType, 0, 1);
     }
 
-    // Clear AI result
     setAiResult(null);
     setActiveConflict(null);
     
     console.log("✅ Resolution accepted and state cleared");
   }
 
-  /* ============================
-     REJECT
-     ============================ */
+  /* REJECT RESOLUTION */
   function handleReject() {
     if (!aiResult) return;
 
@@ -172,7 +155,7 @@ export default function Conflicts({
     <div className="table-card">
       <h3>🚦 Conflict Resolution</h3>
 
-      {/* ================= ERROR DISPLAY ================= */}
+      {/* ERROR DISPLAY */}
       {error && (
         <div style={{
           background: "#fee2e2",
@@ -186,7 +169,7 @@ export default function Conflicts({
         </div>
       )}
 
-      {/* ================= LOADING STATE ================= */}
+      {/* LOADING STATE */}
       {loading && (
         <div style={{
           background: "#dbeafe",
@@ -199,7 +182,7 @@ export default function Conflicts({
         </div>
       )}
 
-      {/* ================= AI RESULT (ENHANCED) ================= */}
+      {/* AI RESULT - DIFFERENT DISPLAY FOR EACH TYPE */}
       {aiResult && aiResult.success && (
         <div 
           style={{
@@ -217,7 +200,7 @@ export default function Conflicts({
             alignItems: "center",
             gap: "8px"
           }}>
-            🤖 AI Recommendation
+            🤖 AI Recommendation - {aiResult.conflictType}
             <span style={{
               background: "#dcfce7",
               color: "#166534",
@@ -230,83 +213,192 @@ export default function Conflicts({
             </span>
           </h4>
 
-          <div style={{ 
-            fontSize: "14px", 
-            lineHeight: "1.8",
-            marginBottom: "16px"
-          }}>
+          {/* SAME BLOCK CONFLICT DISPLAY */}
+          {aiResult.conflictType === "SAME_BLOCK" && (
+            <div style={{ fontSize: "14px", lineHeight: "1.8", marginBottom: "16px" }}>
+              <div style={{ 
+                background: "#fee2e2", 
+                padding: "12px", 
+                borderRadius: "6px",
+                marginBottom: "12px",
+                borderLeft: "4px solid #dc2626"
+              }}>
+                <strong>⚠️ Opposing Trains on Same Block</strong>
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "8px" }}>
+                <strong>Decision:</strong>
+                <span style={{ color: "#dc2626", fontWeight: "600" }}>
+                  {aiResult.decision} (Complete Stop)
+                </span>
+
+                <strong>Priority Train:</strong>
+                <span style={{ color: "#166534", fontWeight: "600" }}>
+                  {aiResult.priority_train} (Proceeds normally)
+                </span>
+
+                <strong>Held Train:</strong>
+                <span style={{ color: "#dc2626", fontWeight: "600" }}>
+                  {aiResult.reduced_train} (STOPPED)
+                </span>
+
+                <strong>Action:</strong>
+                <span>{aiResult.detailedAction}</span>
+
+                <strong>Reason:</strong>
+                <span>{aiResult.reason}</span>
+              </div>
+            </div>
+          )}
+
+          {/* LOOP LINE CONFLICT DISPLAY */}
+          {aiResult.conflictType === "LOOP_LINE" && (
+            <div style={{ fontSize: "14px", lineHeight: "1.8", marginBottom: "16px" }}>
+              <div style={{ 
+                background: "#fef3c7", 
+                padding: "12px", 
+                borderRadius: "6px",
+                marginBottom: "12px",
+                borderLeft: "4px solid #d97706"
+              }}>
+                <strong>🔁 Same Direction - Insufficient Gap</strong>
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "8px" }}>
+                <strong>Decision:</strong>
+                <span style={{ color: "#d97706", fontWeight: "600" }}>
+                  {aiResult.decision}
+                </span>
+
+                <strong>Leading Train:</strong>
+                <span style={{ color: "#166534", fontWeight: "600" }}>
+                  {aiResult.priority_train} (Continues on MAIN)
+                </span>
+
+                <strong>Following Train:</strong>
+                <span style={{ color: "#d97706", fontWeight: "600" }}>
+                  {aiResult.reduced_train} (Routed to LOOP)
+                </span>
+
+                <strong>Suggested Speed:</strong>
+                <span style={{ fontWeight: "600" }}>
+                  {aiResult.suggested_speed} km/h
+                </span>
+
+                <strong>Current Gap:</strong>
+                <span>{aiResult.timeGap} min (needs {aiResult.recommendedGap} min)</span>
+
+                <strong>Action:</strong>
+                <span>{aiResult.detailedAction}</span>
+
+                <strong>Reason:</strong>
+                <span>{aiResult.reason}</span>
+              </div>
+            </div>
+          )}
+
+          {/* JUNCTION CONFLICT DISPLAY */}
+          {aiResult.conflictType === "JUNCTION" && (
+            <div style={{ fontSize: "14px", lineHeight: "1.8", marginBottom: "16px" }}>
+              <div style={{ 
+                background: "#eff6ff", 
+                padding: "12px", 
+                borderRadius: "6px",
+                marginBottom: "12px",
+                borderLeft: "4px solid #3b82f6"
+              }}>
+                <strong>🔀 Junction Convergence - Clearance Required</strong>
+              </div>
+              
+              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "8px" }}>
+                <strong>Decision:</strong>
+                <span style={{ color: "#3b82f6", fontWeight: "600" }}>
+                  {aiResult.decision}
+                </span>
+
+                <strong>Junction:</strong>
+                <span style={{ fontWeight: "600" }}>
+                  {aiResult.junctionId}
+                </span>
+
+                <strong>Entry Sequence:</strong>
+                <div style={{ 
+                  background: "#f0f9ff", 
+                  padding: "10px", 
+                  borderRadius: "4px",
+                  marginTop: "4px"
+                }}>
+                  {aiResult.entrySequence && aiResult.entrySequence.map((seq, i) => (
+                    <div key={i} style={{ 
+                      marginBottom: i < aiResult.entrySequence.length - 1 ? "8px" : "0",
+                      paddingBottom: i < aiResult.entrySequence.length - 1 ? "8px" : "0",
+                      borderBottom: i < aiResult.entrySequence.length - 1 ? "1px solid #bfdbfe" : "none"
+                    }}>
+                      <div style={{ fontWeight: "600" }}>
+                        {i + 1}. Train {seq.train} - {seq.action}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#475569", marginTop: "2px" }}>
+                        {seq.note}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <strong>Clearance Time:</strong>
+                <span>{aiResult.clearanceRequired} minutes</span>
+
+                <strong>Current Gap:</strong>
+                <span style={{ color: aiResult.currentGap < aiResult.clearanceRequired ? "#dc2626" : "#16a34a" }}>
+                  {aiResult.currentGap.toFixed(1)} min
+                </span>
+
+                <strong>Delay Required:</strong>
+                <span style={{ fontWeight: "600", color: "#3b82f6" }}>
+                  {aiResult.suggested_delay} minutes for Train {aiResult.reduced_train}
+                </span>
+
+                <strong>Severity:</strong>
+                <span style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  background: aiResult.severity === "CRITICAL" ? "#fee2e2" : 
+                             aiResult.severity === "HIGH" ? "#fed7aa" : "#fef3c7",
+                  color: aiResult.severity === "CRITICAL" ? "#7f1d1d" : 
+                         aiResult.severity === "HIGH" ? "#7c2d12" : "#78350f"
+                }}>
+                  {aiResult.severity}
+                </span>
+
+                <strong>Action:</strong>
+                <span>{aiResult.detailedAction}</span>
+
+                <strong>Reason:</strong>
+                <span>{aiResult.reason}</span>
+              </div>
+            </div>
+          )}
+
+          {/* COMMON PROBABILITY DATA */}
+          {aiResult.probabilities && (
             <div style={{ 
               display: "grid", 
-              gridTemplateColumns: "140px 1fr",
-              gap: "8px"
+              gridTemplateColumns: "140px 1fr", 
+              gap: "8px",
+              paddingTop: "12px",
+              borderTop: "1px solid #dcfce7"
             }}>
-              <strong>Decision:</strong>
-              <span style={{
-                color: aiResult.decision === "HOLD_TRAIN" ? "#dc2626" : "#d97706",
-                fontWeight: "600"
-              }}>
-                {aiResult.decision}
+              <strong>Risk Analysis:</strong>
+              <span>
+                Low: {aiResult.probabilities.low_risk}% | 
+                High: {aiResult.probabilities.high_risk}%
               </span>
-
-              <strong>Priority Train:</strong>
-              <span style={{ color: "#166534", fontWeight: "600" }}>
-                {aiResult.priority_train}
-              </span>
-
-              <strong>Affected Train:</strong>
-              <span style={{ color: "#dc2626", fontWeight: "600" }}>
-                {aiResult.reduced_train}
-              </span>
-
-              <strong>Suggested Speed:</strong>
-              <span style={{ fontWeight: "600" }}>
-                {aiResult.suggested_speed} km/h
-                {aiResult.suggested_speed === 0 && " (HOLD)"}
-              </span>
-
-              <strong>Reason:</strong>
-              <span>{aiResult.reason}</span>
-
-              {aiResult.probabilities && (
-                <>
-                  <strong>Risk Analysis:</strong>
-                  <span>
-                    Low: {aiResult.probabilities.low_risk}% | 
-                    High: {aiResult.probabilities.high_risk}%
-                  </span>
-                </>
-              )}
-              
-              {aiResult.priority_analysis && (
-                <>
-                  <strong>Priority Analysis:</strong>
-                  <div style={{ 
-                    marginTop: "8px", 
-                    padding: "8px",
-                    background: "#dcfce7",
-                    borderRadius: "4px",
-                    fontSize: "13px"
-                  }}>
-                    <div>🚂 Train {aiResult.priority_train}: Score {aiResult.priority_analysis.priority_train_score}</div>
-                    <div style={{ marginLeft: "20px", fontSize: "12px", color: "#166534" }}>
-                      • Passengers: {aiResult.priority_analysis.priority_train_passengers}
-                      <br />
-                      • Distance: {aiResult.priority_analysis.priority_train_distance} km
-                    </div>
-                    <div style={{ marginTop: "4px" }}>🚂 Train {aiResult.reduced_train}: Score {aiResult.priority_analysis.affected_train_score}</div>
-                    <div style={{ marginLeft: "20px", fontSize: "12px", color: "#166534" }}>
-                      • Passengers: {aiResult.priority_analysis.affected_train_passengers}
-                      <br />
-                      • Distance: {aiResult.priority_analysis.affected_train_distance} km
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
-          </div>
+          )}
 
-          {/* ⭐ ACTION BUTTONS */}
-          <div style={{ display: "flex", gap: "10px" }}>
+          {/* ACTION BUTTONS */}
+          <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
             <button
               onClick={handleAccept}
               style={{
@@ -340,7 +432,7 @@ export default function Conflicts({
             </button>
           </div>
 
-          {/* ⭐ INFO MESSAGE */}
+          {/* INFO MESSAGE */}
           <div style={{
             marginTop: "12px",
             padding: "8px",
@@ -349,12 +441,12 @@ export default function Conflicts({
             fontSize: "12px",
             color: "#92400e"
           }}>
-            ℹ️ Accepting will update Train {aiResult.reduced_train}'s speed to {aiResult.suggested_speed} km/h in the train precedence list
+            ℹ️ Accepting will apply the recommended {aiResult.decision} action
           </div>
         </div>
       )}
 
-      {/* ================= SAME BLOCK CONFLICTS ================= */}
+      {/* SAME BLOCK CONFLICTS */}
       <div style={{ marginTop: "20px" }}>
         <h4 style={{ 
           display: "flex", 
@@ -445,7 +537,7 @@ export default function Conflicts({
         )}
       </div>
 
-      {/* ================= LOOP LINE CONFLICTS ================= */}
+      {/* LOOP LINE CONFLICTS */}
       <div style={{ marginTop: "24px" }}>
         <h4 style={{ 
           display: "flex", 
@@ -495,17 +587,6 @@ export default function Conflicts({
                 </div>
               </div>
 
-              <div style={{
-                background: "#dbeafe",
-                padding: "10px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                color: "#1e40af",
-                marginBottom: "10px"
-              }}>
-                👉 <strong>Recommendation:</strong> Route Train {conflict.followingTrain} to LOOP LINE
-              </div>
-
               <button 
                 onClick={() => handleResolve(conflict)}
                 disabled={loading}
@@ -528,7 +609,7 @@ export default function Conflicts({
         )}
       </div>
 
-      {/* ================= JUNCTION CONFLICTS ================= */}
+      {/* JUNCTION CONFLICTS */}
       <div style={{ marginTop: "24px" }}>
         <h4 style={{ 
           display: "flex", 
@@ -599,17 +680,6 @@ export default function Conflicts({
                     (needs {conflict.clearanceNeeded} min)
                   </div>
                 </div>
-              </div>
-
-              <div style={{
-                background: "#fffbeb",
-                padding: "10px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                color: "#92400e",
-                marginBottom: "10px"
-              }}>
-                ⚠ <strong>Issue:</strong> Insufficient clearance time between trains at junction
               </div>
 
               <button 

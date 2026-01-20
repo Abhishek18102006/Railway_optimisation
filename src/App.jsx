@@ -1,4 +1,4 @@
-// src/App.jsx (WITHOUT NETWORK LINE VIEW)
+// src/App.jsx (UPDATED - Proper Conflict Resolution Tracking)
 import { useState, useEffect } from "react";
 import Login from "./pages/Login";
 import Dashboard from "./components/Dashboard";
@@ -96,11 +96,13 @@ function App() {
             ...t,
             status: "RESOLVED",
             conflict: false,
-            conflict_reason: "AI resolution applied",
+            conflict_reason: `Resolved: ${resolutionDetails.decision}`,
             max_speed: resolutionDetails.suggested_speed || t.max_speed,
             delay: resolutionDetails.delayReduction 
               ? Math.max(0, (t.delay || 0) - resolutionDetails.delayReduction)
-              : t.delay
+              : t.delay,
+            resolution_applied: resolutionDetails.decision,
+            resolution_time: new Date().toLocaleTimeString()
           };
           
           console.log(`🔄 Updated train ${t.train_id}:`, {
@@ -108,7 +110,9 @@ function App() {
             new_speed: updatedTrain.max_speed,
             old_delay: t.delay,
             new_delay: updatedTrain.delay,
-            status: updatedTrain.status
+            old_status: t.status,
+            new_status: updatedTrain.status,
+            resolution: resolutionDetails.decision
           });
           
           return updatedTrain;
@@ -118,7 +122,8 @@ function App() {
           return {
             ...t,
             status: "ON TIME",
-            conflict: false
+            conflict: false,
+            conflict_reason: null
           };
         }
         
@@ -144,7 +149,8 @@ function App() {
         reduced_train: resolutionDetails.reduced_train || trainId,
         decision: resolutionDetails.decision || "RESOLVED",
         confidence: resolutionDetails.confidence || 75,
-        resolutionTime: resolutionTime
+        resolutionTime: resolutionTime,
+        conflictType: resolutionDetails.conflictType || "UNKNOWN"
       };
 
       const updated = {
@@ -221,6 +227,7 @@ function App() {
           onClearTrain={handleClearTrain}
           onAcceptResolution={handleAcceptResolution}
           onRejectResolution={handleRejectResolution}
+          performanceData={performanceData}
         />
       )}
 
